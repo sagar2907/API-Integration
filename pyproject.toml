@@ -54,7 +54,10 @@ pythonpath = ["src"]
 [dependency-groups]
 dev = [
     "markdown>=3.10.3",
-    "playwright>=1.62.0",
+    # pymupdf stamps the footer onto the rendered PDF and is the fallback
+    # rasteriser. The report is printed by whatever Chrome or Edge is already
+    # installed, so there is no browser to download before the docs will build.
+    "pymupdf>=1.28.2",
     "pygments>=2.21.0",
     "pypdfium2>=5.13.0",
 ]

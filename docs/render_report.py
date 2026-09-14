@@ -12,9 +12,12 @@ is silently full of them still "succeeds". The only way to know is to look.
 
 from __future__ import annotations
 
+import datetime as _dt
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import markdown
@@ -23,6 +26,27 @@ DOCS = Path(__file__).resolve().parent
 SOURCE = DOCS / "REPORT.md"
 OUTPUT = DOCS / "API-Engine-Report.pdf"
 PREVIEW_DIR = DOCS / "_preview"
+FOOTER = "Autonomous API Discovery & Integration Engine"
+
+# Whatever Chromium is already on the machine. Playwright used to drive this,
+# which meant a fresh clone could not build the report until ~150 MB of browser
+# had been downloaded -- and the failure came at render time, not install time.
+BROWSERS = (
+    Path("C:/Program Files/Google/Chrome/Application/chrome.exe"),
+    Path("C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"),
+    Path("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"),
+    Path("C:/Program Files/Microsoft/Edge/Application/msedge.exe"),
+)
+
+
+def find_browser() -> Path:
+    for candidate in BROWSERS:
+        if candidate.exists():
+            return candidate
+    found = shutil.which("chrome") or shutil.which("msedge") or shutil.which("chromium")
+    if found:
+        return Path(found)
+    raise SystemExit("no Chromium-based browser found; install Chrome or Edge")
 
 # Serif for prose, because this is a document to be read rather than a web page.
 # Every family has a real fallback: naming a font that is absent is exactly how
@@ -115,6 +139,32 @@ li { margin: 0.22em 0; }
 """
 
 
+def git(*args: str) -> str:
+    """Read something out of git, or "" when this is not a checkout."""
+    try:
+        done = subprocess.run(
+            ["git", *args], cwd=DOCS.parent, capture_output=True, text=True, timeout=15
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def stamp_revision(text: str) -> str:
+    """Fill the commit and date placeholders at build time.
+
+    A hardcoded date on the title page is a small lie the moment the document
+    is rebuilt, and the report spends Part V on exactly this class of drift.
+    """
+    commit = git("rev-parse", "--short", "HEAD") or "working tree"
+    date = git("log", "-1", "--format=%ad", "--date=format:%d %B %Y")
+    if not date:
+        date = _dt.date.today().strftime("%d %B %Y")
+    if git("status", "--porcelain"):
+        commit += " + uncommitted changes"
+    return text.replace("{{COMMIT}}", commit).replace("{{DATE}}", date)
+
+
 def build_html(text: str) -> str:
     body = markdown.markdown(
         text,
@@ -128,33 +178,61 @@ def build_html(text: str) -> str:
 
 
 def render_pdf(html: str) -> None:
-    from playwright.sync_api import sync_playwright
+    """HTML -> PDF via headless Chromium, then stamp the footer on every page.
 
-    tmp = DOCS / "_report.html"
-    tmp.write_text(html, encoding="utf-8")
+    Two Windows details are load-bearing. Headless Chrome fails with "Multiple
+    targets are not supported" when a path contains a space, and this repo lives
+    in a folder called "API Engine" -- so both the input HTML and the output PDF
+    go to a space-free temp directory and the result is copied back. And the CLI
+    has no equivalent of Playwright's footer_template, so page numbers are drawn
+    afterwards with pymupdf rather than by the browser.
+    """
+    browser = find_browser()
+    work = Path(tempfile.mkdtemp(prefix="apieng-report-"))
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch()
-            page = browser.new_page()
-            page.goto(tmp.as_uri(), wait_until="networkidle")
-            page.pdf(
-                path=str(OUTPUT),
-                format="A4",
-                print_background=True,
-                display_header_footer=True,
-                header_template="<div></div>",
-                footer_template=(
-                    '<div style="width:100%;font-size:7.5pt;color:#8a90a0;'
-                    'font-family:Segoe UI,Arial,sans-serif;padding:0 16mm;'
-                    'display:flex;justify-content:space-between;">'
-                    "<span>Autonomous API Discovery &amp; Integration Engine</span>"
-                    '<span class="pageNumber"></span></div>'
-                ),
-                margin={"top": "18mm", "bottom": "20mm", "left": "16mm", "right": "16mm"},
-            )
-            browser.close()
+        tmp_html = work / "report.html"
+        tmp_html.write_text(html, encoding="utf-8")
+        tmp_pdf = work / "report.pdf"
+        url = "file:///" + str(tmp_html).replace("\\", "/").replace(" ", "%20")
+        subprocess.run(
+            [
+                str(browser), "--headless=new", "--disable-gpu", "--no-first-run",
+                "--no-pdf-header-footer", "--virtual-time-budget=8000",
+                f"--user-data-dir={work / 'profile'}",
+                f"--print-to-pdf={tmp_pdf}", url,
+            ],
+            check=True, capture_output=True, timeout=300,
+        )
+        if not tmp_pdf.exists() or tmp_pdf.stat().st_size == 0:
+            raise SystemExit("browser produced no PDF")
+        stamp_footer(tmp_pdf)
+        OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(tmp_pdf, OUTPUT)
     finally:
-        tmp.unlink(missing_ok=True)
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def stamp_footer(pdf: Path) -> None:
+    """Draw the document title and a page number into the bottom margin.
+
+    The @page rule leaves 20mm at the foot; this writes into that band, so it
+    cannot collide with body text.
+    """
+    import pymupdf
+
+    doc = pymupdf.open(pdf)
+    grey = (0.54, 0.56, 0.63)
+    for number, page in enumerate(doc, start=1):
+        width, height = page.rect.width, page.rect.height
+        baseline = height - 34
+        page.insert_text((45, baseline), FOOTER, fontname="helv", fontsize=7.5, color=grey)
+        label = str(number)
+        page.insert_text(
+            (width - 45 - pymupdf.get_text_length(label, "helv", 7.5), baseline),
+            label, fontname="helv", fontsize=7.5, color=grey,
+        )
+    doc.saveIncr()
+    doc.close()
 
 
 def verify(sample_every: int = 4) -> int:
@@ -213,7 +291,7 @@ def main() -> int:
     if exotic:
         print(f"note: unusual characters present: {exotic}")
 
-    render_pdf(build_html(text))
+    render_pdf(build_html(stamp_revision(text)))
     size_kb = OUTPUT.stat().st_size / 1024
     print(f"wrote {OUTPUT.name} ({size_kb:.0f} KB)")
     verify()

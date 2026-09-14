@@ -2,7 +2,7 @@
 
 ## A first-principles engineering report
 
-**Version 1.1 · 30 August 2026**
+**Version 1.1 · {{DATE}} · commit `{{COMMIT}}`**
 
 This document explains the project from the ground up. It assumes no prior
 knowledge of APIs, search engines, databases, or language models. Every
