@@ -1,0 +1,39 @@
+# secrets
+.env
+.env.local
+
+# data — specs cache, sqlite db, embeddings
+data/
+!data/.gitkeep
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# rendered report artefacts (the markdown source is tracked, the PDF is built)
+docs/_preview/
+docs/_report.html
+
+# editors / os
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# local agent guidance — not part of the published repo
+CLAUDE.md

@@ -1,0 +1,226 @@
+{
+  "version": "1.0",
+  "created": "2026-08-22",
+  "corpus": "118 providers / 10563 endpoints (APIs.guru snapshot)",
+  "method": "Endpoints were selected by literal SQL pattern matching on method and path, never by running the retrieval engine under test. Labelling from search output would be circular and would flatter whichever ranker produced it.",
+  "relevance": "Binary. An endpoint is relevant when it genuinely performs the requested operation, regardless of provider. Several providers are often correct for one query - 'create an issue' is satisfied by GitHub, Bitbucket and Jira alike - and marking only one would penalise a ranker for being right in a way the label did not anticipate.",
+  "queries": [
+    {
+      "id": "q01",
+      "query": "post a message to a chat channel",
+      "intent": "messaging",
+      "relevant": ["ep_0fb400b0050e", "ep_9f6f95f6eca9", "ep_d46d24fa4190"],
+      "note": "Slack chat.postMessage, Zoom chat message, Ably publish to channel"
+    },
+    {
+      "id": "q02",
+      "query": "open a bug report in a code repository",
+      "intent": "issue-tracking",
+      "relevant": ["ep_18da3450e690", "ep_c11fd487e0fe", "ep_dba113143405"],
+      "note": "GitHub, Bitbucket and Jira issue creation"
+    },
+    {
+      "id": "q03",
+      "query": "take a payment from a credit card",
+      "intent": "payments",
+      "relevant": ["ep_773a5a1f98dd", "ep_8cd0e23ba306", "ep_655a44e8b7a1"],
+      "note": "Stripe charges, Stripe payment intents, Beanstream payment"
+    },
+    {
+      "id": "q04",
+      "query": "send an email message to a recipient",
+      "intent": "email",
+      "relevant": ["ep_39213568456e"],
+      "note": "SendGrid v3 mail send"
+    },
+    {
+      "id": "q05",
+      "query": "schedule a video conference call",
+      "intent": "scheduling",
+      "relevant": ["ep_2f8cd52526b5"],
+      "note": "Zoom create meeting"
+    },
+    {
+      "id": "q06",
+      "query": "upload a file to cloud storage",
+      "intent": "files",
+      "relevant": ["ep_af3b11fb7721", "ep_f5ef6fa720fc"],
+      "note": "Box upload file, Appwrite create file"
+    },
+    {
+      "id": "q07",
+      "query": "register a callback url to receive event notifications",
+      "intent": "webhooks",
+      "relevant": [
+        "ep_306997a82cc2", "ep_ac1fd69d7bec", "ep_b1fb88be9135", "ep_9d7512f3115b",
+        "ep_0e0b7b6465a2", "ep_00e977336624", "ep_ea9a1ceea6e2", "ep_e9ba1bee81ca",
+        "ep_f5cc9d30d66f", "ep_8707f83553b9"
+      ],
+      "note": "Webhook registration across Asana, Box, GitHub, Bitbucket, api.video, BulkSMS, CallFire, BIAPI, Billbee. Deliberately a high-recall query with many correct answers."
+    },
+    {
+      "id": "q08",
+      "query": "list the code repositories belonging to a user",
+      "intent": "source-control",
+      "relevant": ["ep_509da4c345d2", "ep_330861c70e9c", "ep_8313cfe7cbda"],
+      "note": "GitHub user repos, GitHub authenticated user repos, Bitbucket repositories"
+    },
+    {
+      "id": "q09",
+      "query": "add a new customer record",
+      "intent": "crm",
+      "relevant": ["ep_9856cc34da23", "ep_7d6efdaa3f4a", "ep_7783c913ec0e"],
+      "note": "Stripe, Big Red Cloud, Billbee customer creation"
+    },
+    {
+      "id": "q10",
+      "query": "refund money back to a customer",
+      "intent": "payments",
+      "relevant": ["ep_e6f8687e74c0", "ep_f98eef602324", "ep_ac4d24d05d91"],
+      "note": "Stripe refunds and charge-level refunds"
+    },
+    {
+      "id": "q11",
+      "query": "create a new user account",
+      "intent": "user-management",
+      "relevant": [
+        "ep_5372b5573819", "ep_452007b8c48a", "ep_814eaa5588f9",
+        "ep_ae32f7a6e7ac", "ep_14f9c39bba8e", "ep_53948e4d870f"
+      ],
+      "note": "Box, Zoom, AGCO, Apache Airflow, Anchore, Apacta"
+    },
+    {
+      "id": "q12",
+      "query": "list the chat channels in a workspace",
+      "intent": "messaging",
+      "relevant": ["ep_8ed6520df870", "ep_02d7d9bcbd0e", "ep_4335882a87c2"],
+      "note": "Slack conversations.list, Ably channels, Zoom user channels"
+    },
+    {
+      "id": "q13",
+      "query": "invite a person to a conversation",
+      "intent": "messaging",
+      "relevant": ["ep_5c6a3f63c859", "ep_edb1032deb49"],
+      "note": "Slack conversations.invite and admin.conversations.invite"
+    },
+    {
+      "id": "q14",
+      "query": "permanently delete a file",
+      "intent": "files",
+      "relevant": ["ep_5ee40a6ea2c9", "ep_837da0742be2", "ep_9afbda3205ff", "ep_7ef341708a71"],
+      "note": "Box delete and permanent trash removal, Appwrite, AGCO"
+    },
+    {
+      "id": "q15",
+      "query": "propose code changes for review",
+      "intent": "source-control",
+      "relevant": ["ep_2caefebcb0c1", "ep_dabfccc06050"],
+      "note": "GitHub and Bitbucket pull request creation. Phrased without the words 'pull request' on purpose - a vocabulary-mismatch case."
+    },
+    {
+      "id": "q16",
+      "query": "start a recurring billing subscription",
+      "intent": "payments",
+      "relevant": ["ep_170963e06fea", "ep_d85c63dbfd9c"],
+      "note": "Stripe subscriptions"
+    },
+    {
+      "id": "q17",
+      "query": "search for people by username",
+      "intent": "search",
+      "relevant": ["ep_0fc6c909d9a1", "ep_a538de93bedf", "ep_20378e2a626e"],
+      "note": "GitHub, Jira and Twitter user search"
+    },
+    {
+      "id": "q18",
+      "query": "check the available account balance",
+      "intent": "finance",
+      "relevant": ["ep_6d2253ee813d", "ep_b2d7608d72cc", "ep_78accdec4fb9"],
+      "note": "Stripe balance, Twilio account balance, Bintable balance"
+    },
+    {
+      "id": "q19",
+      "query": "send a text message to a phone number",
+      "intent": "messaging",
+      "relevant": ["ep_1a6680422ee5", "ep_b1a830bc8bff"],
+      "note": "Twilio SMS, BulkSMS send"
+    },
+    {
+      "id": "q20",
+      "query": "create a to-do task",
+      "intent": "productivity",
+      "relevant": ["ep_8e24cd06e81e", "ep_61c5584af5a3"],
+      "note": "Asana and Box task creation"
+    },
+    {
+      "id": "q21",
+      "query": "add a card to a kanban board",
+      "intent": "productivity",
+      "relevant": ["ep_ebf35b34472c", "ep_f94a3ad18768", "ep_913570a925fe"],
+      "note": "Trello cards and list cards, GitHub project card"
+    },
+    {
+      "id": "q22",
+      "query": "view the commit history of a repository",
+      "intent": "source-control",
+      "relevant": ["ep_29d9583e1192", "ep_01a262d1f65a"],
+      "note": "GitHub and Bitbucket commit listing"
+    },
+    {
+      "id": "q23",
+      "query": "create a new branch in version control",
+      "intent": "source-control",
+      "relevant": ["ep_d37a93a02eff", "ep_81bee7ed185b"],
+      "note": "Bitbucket create branch, GitHub create reference. GitHub calls it a 'reference', never a branch - a genuine vocabulary trap."
+    },
+    {
+      "id": "q24",
+      "query": "get the profile details of a user",
+      "intent": "user-management",
+      "relevant": ["ep_e9739d4891e7", "ep_cb831c1763ca", "ep_52a1cdd07b15", "ep_8f7e5cada56c"],
+      "note": "GitHub get user, Slack users.info, Box current user, Airflow get user"
+    },
+    {
+      "id": "q25",
+      "query": "create a new code repository",
+      "intent": "source-control",
+      "relevant": ["ep_254d6e498561", "ep_9ba11d1a012f"],
+      "note": "GitHub user and organization repository creation"
+    },
+    {
+      "id": "q26",
+      "query": "generate an invoice for a customer",
+      "intent": "finance",
+      "relevant": ["ep_84744024d7c6", "ep_d0d156b9fe6c"],
+      "note": "Stripe and Apacta invoice creation"
+    },
+    {
+      "id": "q27",
+      "query": "list the open issues in a repository",
+      "intent": "issue-tracking",
+      "relevant": ["ep_f98ba858629c", "ep_af0d8b3b804d", "ep_d04050426dd5"],
+      "note": "GitHub repository issues, Bitbucket issues, GitHub assigned issues"
+    },
+    {
+      "id": "q28",
+      "query": "add a label to an issue",
+      "intent": "issue-tracking",
+      "relevant": ["ep_4889cd2244f1", "ep_93c8d3e4306a"],
+      "note": "GitHub add labels to issue, GitHub create label"
+    },
+    {
+      "id": "q29",
+      "query": "list the members of a team",
+      "intent": "user-management",
+      "relevant": ["ep_0465b71c1449", "ep_aa779fd1e241", "ep_8fd6b0f5d98f"],
+      "note": "GitHub team members, GitHub org members, Bitbucket workspace members"
+    },
+    {
+      "id": "q30",
+      "query": "upload a video",
+      "intent": "media",
+      "relevant": ["ep_e6dd68cdc258", "ep_0cf3604bb03b"],
+      "note": "api.video create video and upload"
+    }
+  ]
+}
