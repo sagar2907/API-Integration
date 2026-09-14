@@ -13,6 +13,11 @@ recording decisions that turned out to be **wrong**, because those are where the
 reasoning is visible. A report that lists only the things that worked teaches
 nothing about how the work was actually done.
 
+**Part I assumes no background at all** and builds the vocabulary from what an
+API call is up to what a DAG is; skip it if that is familiar. **§2.5 is the
+whole system working on one real goal, start to finish** — a good place to begin
+if you would rather see the thing run before reading how it is built.
+
 ---
 
 # Part I — Concepts from scratch
@@ -254,6 +259,76 @@ The final concepts, needed for Part IV.
   services at `169.254.169.254` hand out credentials to anything inside the
   machine that asks.
 
+## 1.12 Workflows, steps, and why the shape is a graph
+
+The last piece of vocabulary, and the one the whole of Part III is built on.
+
+A **workflow** is an automation written down as data rather than as code. It is
+a list of **steps** (also called **nodes**), plus a record of which step feeds
+which. One step is the **trigger** — the thing that starts everything, such as
+"a GitHub issue was opened". The rest are **actions** — things to do, such as
+"post a Slack message".
+
+Steps depend on each other, because a later step usually consumes an earlier
+step's output. Draw those dependencies as arrows and you get a **graph**:
+
+```
+  [trigger]  GitHub: issue opened
+      |
+      |  issue.title, issue.user.login
+      v
+  [action]   Slack: post message
+```
+
+That shape has a name: a **directed acyclic graph**, universally shortened to
+**DAG**. Three words, each doing work:
+
+- **Graph** — things connected by arrows.
+- **Directed** — the arrows have a direction. Output flows one way.
+- **Acyclic** — no loops. You cannot follow the arrows and arrive back where
+  you started.
+
+The acyclic part is not a technicality. A cycle means step A waits for step B
+while step B waits for step A, so the workflow can never finish and nothing can
+say what its output is. Rejecting cycles is check #1 of the seven in §3.5, and
+it is checked structurally rather than discovered at runtime by hanging.
+
+### What "compiling" means here
+
+The model does not emit runnable code. It emits a **plan** — a description of
+the intended workflow. That plan is then checked and turned into a **compiled
+intermediate representation**, usually shortened to **IR**.
+
+"Intermediate" because it sits between the two ends: more precise than the
+English sentence, but not yet the actual HTTP requests. It is a fully resolved,
+verified description — every endpoint confirmed to exist, every field mapped to
+a real source, every type checked — stored as data.
+
+The reason for the intermediate step is that it separates *deciding* from
+*doing*. Everything uncertain happens before the IR exists. Once it does,
+execution is mechanical, and the same IR run twice does the same thing. §4.5
+covers the reasoning in full.
+
+### Triggers, webhooks, queues and workers
+
+Four operational words the later parts use freely:
+
+- A **webhook** is how one service tells another that something happened.
+  Instead of you asking GitHub "any new issues?" every few seconds, GitHub sends
+  an HTTP request *to you* the moment an issue opens. That request's body is the
+  **payload**, and it is often large — the GitHub issue payload runs to about
+  200 lines, which is why finding the right field in it is real work.
+- A **queue** is a waiting list of jobs. Work is put on the queue rather than
+  done immediately, so a slow or failing job does not block whatever accepted
+  it.
+- A **worker** is the process that takes jobs off the queue and runs them.
+  Splitting the two means the part that receives the webhook can answer
+  instantly while the actual sending happens elsewhere, and a crash loses
+  nothing because the job is still on the queue.
+- A **dry run** executes the workflow with every outbound request suppressed.
+  It proves the plan is wired correctly without sending anyone a message. Part
+  VII counts dry runs separately from real executions for exactly that reason.
+
 ---
 
 # Part II — The problem, and what was built
@@ -334,6 +409,103 @@ buys you.**
 
 The whole backend runs on SQLite with no external services, no Docker and no
 container runtime.
+
+## 2.5 One goal, end to end
+
+Parts III to V take the system apart module by module. Before that, here is the
+whole thing working, on the goal from §2.1 — the one that costs a developer one
+to two days by hand.
+
+> **"When someone files a bug on GitHub, put it in our team's Slack channel."**
+
+### Step 1 — The sentence becomes a typed requirement
+
+`agent/intent.py` sends the sentence to the language model and gets back
+structure rather than prose: there is one trigger, concerning issues, on GitHub;
+there is one action, sending a message, on Slack.
+
+This is the model doing what it is genuinely good at — turning messy human
+phrasing into a shape. Nothing here is trusted yet. It is a *guess about what
+was meant*, and everything downstream treats it as one.
+
+### Step 2 — Search the corpus for candidate endpoints
+
+That requirement becomes search queries against the indexed corpus of
+**15,504 endpoints**. Search runs in **hybrid** mode — keyword matching (BM25)
+and meaning-based matching (embeddings) combined, because §7.1 measures hybrid
+as better than either alone on every quality metric.
+
+Only the **top 20** results per search survive. That cut-off matters more than
+it looks: the planner never sees rank 21, so anything below is invisible to the
+entire rest of the system. It is why §7.1 calls R@20 the operationally important
+number rather than P@5.
+
+### Step 3 — The model plans, but may only use what search returned
+
+The retrieved candidates are handed to `agent/planner.py` **with their required
+parameters and their available response fields attached**, because a model
+cannot map a field it was never shown.
+
+The model proposes a workflow: trigger on this GitHub endpoint, then call that
+Slack endpoint, taking the message text from the issue title.
+
+Now the first guard applies. The model may name **only endpoint IDs that this
+request's searches actually returned**. Anything else is refused before the
+database is even consulted — and, deliberately, a real endpoint that exists in
+the database but was not retrieved for *this* goal is refused too. Existing is
+not enough. That closes the case where the model recalls a genuine endpoint from
+its training data and drops it in out of context (§3.6).
+
+### Step 4 — The compiler tries to reject the plan
+
+Everything that survives goes to `workflow/compiler.py` and faces seven checks
+(§3.5): structure, existence, agreement, parameters, body, compatibility, policy.
+
+Assume the model made the very mistake §1.10 predicts, and mapped the author
+from `issue.author` — a field that does not exist; the real path is
+`issue.user.login`. Check #6 catches it, and the refusal is a structured object,
+not a sentence:
+
+```json
+{"code": "schema_incompatible", "node_id": "n3", "field": "message.text",
+ "expected": "string", "actual": "object",
+ "hint": "map issue.title into message.text"}
+```
+
+### Step 5 — The refusal goes back to the model, at most three times
+
+Those structured issues are fed back verbatim, the model revises, and the plan
+is re-checked. Three attempts maximum, then it gives up and says so rather than
+looping forever.
+
+This is the point of the whole design. The model is allowed to be wrong,
+repeatedly, because being wrong is *cheap and contained* — a fabricated field
+name produces a rejection with a hint, not a broken automation discovered three
+weeks later. Measured cost: about **20 seconds** and **2,582 tokens** when the
+first attempt is accepted, 5,850 when one repair round is needed (§7.4).
+
+### Step 6 — A compiled IR, then execution
+
+What survives is the compiled IR from §1.12: every endpoint verified, every
+field mapped, every type checked. Execution is now mechanical.
+
+`execution/` resolves credentials (decrypting at the moment of use), checks the
+egress guard, and issues the request. Then the trap from §2.1 point 6: Slack
+answers `200 OK` with `{"ok": false}` when it has failed. The executor inspects
+the **response body**, not just the status code (§4.9), so that counts as a
+failure and is classified and retried rather than recorded as success.
+
+### What this actually proves, and what it does not
+
+Being precise here, because "it works" is easy to overclaim. From §7.6: real
+requests have left the process, reached live services and returned success —
+**2 executions succeeded end to end, 4 live `200` responses**.
+
+But **no authenticated call has ever been made against a live provider**, because
+no credential has ever been stored. The decrypt-apply-succeed path exists and is
+covered by tests against a mocked transport, never against the real thing. It is
+the cheapest remaining gap in the project, and §7.6 says so rather than letting
+the architecture diagram imply otherwise.
 
 ---
 
@@ -1094,31 +1266,46 @@ the corpus is 15,504 endpoints against a specification target of 50,000.
 | **BM25** | A classical keyword-ranking algorithm weighting rare words higher |
 | **Checkpoint** | Durably recorded progress, so a crash resumes rather than restarts |
 | **Compiled IR** | The immutable validated form of a workflow that execution reads |
+| **Corpus** | The whole indexed collection being searched — here, 15,504 endpoints parsed from OpenAPI specifications |
 | **Cosine similarity** | The angle between two vectors, used to compare meanings |
 | **Cross-encoder** | A reranking model that reads query and document together |
 | **DAG** | Directed acyclic graph — steps with arrows that never loop back |
+| **Dry run** | Executing a workflow with every outbound request suppressed, to prove the wiring without messaging anyone |
+| **Egress guard** | The check applied before any outbound request: allowed scheme, blocked hostnames, no private addresses. The defence against SSRF |
 | **Embedding** | A list of numbers representing the meaning of text |
 | **Endpoint** | One specific operation an API offers, a method plus a path |
 | **Fernet** | A symmetric encryption scheme used here for stored credentials |
 | **FTS5** | SQLite's full-text search module, which implements BM25 |
+| **Hallucination** | A model stating a fabricated endpoint or field in the same confident tone it uses for correct ones |
+| **HTTP** | The request-and-response protocol the web runs on, and the way every API call in this project is made |
 | **Idempotency key** | A value making a repeated request safe to send |
-| **JSON Schema** | A standard description of the shape of JSON data |
 | **Jitter** | Randomness added to retry delays to avoid synchronised retries |
+| **JSON Schema** | A standard description of the shape of JSON data |
+| **Large language model (LLM)** | A program that predicts likely text. Excellent at turning phrasing into structure; it does not look facts up |
 | **MRR** | Mean reciprocal rank — how near the top the first correct answer is |
 | **NDCG** | Ranking quality with a discount for lower positions |
+| **Node** | One step in a workflow — a trigger or an action. Used interchangeably with "step" |
 | **OAuth 2.0** | An authorisation flow that issues a token after user approval |
 | **ONNX** | A portable format for running models without a deep-learning framework |
 | **OpenAPI** | A machine-readable description of an entire API |
 | **p95** | The value 95% of measurements fall under |
+| **Payload** | The body of an HTTP request or response. A GitHub issue payload runs to roughly 200 lines |
 | **Precision@K** | Of the top K results, the fraction that were correct |
+| **Prompt** | The text handed to the model, here including the retrieved candidates with their fields |
 | **Pydantic** | A Python library that validates data against typed models |
+| **Queue** | A waiting list of jobs, so accepting work and doing it are separate and a crash loses nothing |
 | **Recall@K** | Of all correct answers, the fraction reaching the top K |
-| **Refresh token** | A durable credential used to obtain new access tokens |
 | **`$ref`** | A pointer inside a specification to a schema defined elsewhere |
+| **Refresh token** | A durable credential used to obtain new access tokens |
 | **RRF** | Reciprocal rank fusion — merging ranked lists by position |
 | **SSRF** | An attack pointing a URL-fetching system at internal infrastructure |
 | **Swagger 2.0** | The predecessor of OpenAPI 3, still widely published |
+| **Token (LLM)** | The unit a model reads and writes text in, and the unit its cost is counted in. A compiled plan costs ~2,582 |
+| **Trigger** | The step that starts a workflow, such as "a GitHub issue was opened". Every workflow has exactly one |
 | **WAL** | SQLite's write-ahead logging mode, allowing concurrent readers |
+| **Webhook** | An HTTP request a service sends you when something happens, instead of you polling it repeatedly |
+| **Worker** | The process that takes jobs off the queue and runs them |
+| **Workflow** | An automation expressed as data rather than code: steps plus the dependencies between them |
 
 ---
 
